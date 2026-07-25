@@ -108,18 +108,28 @@ Layer 1  PRIMITIVES   --wk-palette-*    raw colors, no meaning     (per theme)
 Layer 2  SEMANTIC     --wk-surface-*    meaning, no component      (per theme)
               │       --wk-text-*  --wk-border-*  --wk-accent-*  --wk-state-*
               │
+Layer 2F FORM         --wk-shape-*      shape, depth, density      (per theme)
+              │       --wk-sep-*  --wk-rim-light  --wk-density
+              │
 Layer 3  COMPONENT    --wk-card-bg      component-scoped aliases   (theme-agnostic)
               │       --wk-list-header-bg  --wk-popup-bg  …
               ▼
-         component CSS consumes ONLY layer 2 + layer 3
+         component CSS consumes ONLY layers 2, 2F and 3
 ```
 
-**The rule that makes this work: component CSS never names a color.** It references a
-semantic or component token. A theme then only redefines layers 1–2.
+**The rule that makes this work: component CSS never names a color, a radius or a shadow.**
+It references a semantic, form or component token. A theme then redefines layers 1, 2 and 2F.
 
-Non-color scales (space, radius, type, elevation, motion, z-index) live in a single
-theme-agnostic file and are **not** overridden per theme — except `--wk-radius-*` and
-`--wk-density-*`, which themes may re-map to express their character (see §5.2).
+> **Revision — form is themeable.** The first draft of this plan limited themes to color and
+> deferred shape/depth to a final "Phase 6". That was a mistake: recoloring a square, flat
+> layout yields a square, flat layout in a new color. **Layer 2F** (shape by role, separation
+> strategy, density) is now part of every theme, and the form work moves into Phases 1–5.
+> See **`docs/Theme/Form-Redesign.md`** for the measured diagnosis and the per-component
+> geometry — including why black shadows are ~10× less visible on dark surfaces, which is the
+> real reason the current dark theme reads as flat.
+
+The remaining scales (space, type, motion, z-index) live in a single theme-agnostic file and
+are **not** overridden per theme.
 
 ### 3.1 File layout
 
@@ -258,9 +268,15 @@ persistence. No new schema, no new publication, no new method.
 
 ## 5. Fixing the form
 
-Themes only change color. The "horrific form" complaint is about rhythm, hierarchy and
-consistency — addressed by the scales below, which apply to **all** themes including Classic
-(where they are seeded with Classic's *current* values, so Classic does not move).
+> **Full specification: `docs/Theme/Form-Redesign.md`.** That document measures why the UI
+> reads as *square, boxy and flat* (columns with no radius and no gutter, separated by a 1px
+> line; full-bleed swimlane strips; black shadows that are invisible on dark; `1px 3px` chip
+> padding; 13 disagreeing radii) and specifies the replacement geometry per component. This
+> section is the summary.
+
+The "horrific form" complaint is about shape, depth, rhythm and hierarchy. It is fixed by the
+scales below **plus the Layer 2F form tokens** (§3), which apply to all themes — seeded with
+Classic's *current* values so Classic does not move until Phase 6.
 
 ### 5.1 Scales
 
@@ -289,9 +305,9 @@ Introduce a density multiplier consumed by card/list padding:
 Themes may also re-map `--wk-radius-*` to express character (Nebula: softer, `md:8px`;
 Meridian: crisper, `md:6px`). This is the *only* non-color scale a theme may touch.
 
-### 5.3 Component work (Phase 6)
+### 5.3 Component work (Phases 2–6)
 
-Ordered by user-visible impact:
+Ordered by user-visible impact. Full geometry in `Form-Redesign.md` §3:
 
 1. **Minicard** (`minicard.css`, 979 lines) — align the badge row on one baseline, cap label
    chips with a consistent height/radius, single truncation strategy for titles, one
@@ -386,11 +402,14 @@ Each phase is independently shippable and independently revertable.
 
 ### Phase 1 — Token layer + Classic extraction
 
-- Author `_tokens.css` and `theme-classic.css`, seeding every value from the colors currently
-  hardcoded in component CSS.
+- Author `_tokens.css` and `theme-classic.css`, seeding every value from the colors **and
+  geometry** currently hardcoded in component CSS — including Layer 2F, where Classic pins
+  `--wk-shape-column: 0`, `--wk-shape-card: 4px`, `--wk-shape-popup: 6px` and today's
+  `0 2px 3px rgb(0 0 0 / 0.15)` card shadow.
 - Change **no** component file yet.
 
 **Exit:** tokens defined and unused; zero screenshot diff by construction.
+`tests/themeForm.test.cjs` pins Classic's Layer 2F values so later phases cannot move them.
 
 ### Phase 2 — Migrate component CSS to tokens
 
@@ -399,9 +418,12 @@ One commit per file, largest-impact first, using the measured line counts:
 `cardDetails.css` → `popup.css` → `sidebar.css` → `boardBody.css` → `swimlanes.css` →
 `boardsList.css` → `layouts.css` → the remaining ~50 smaller files.
 
-For each file: replace every literal with the semantic token whose Classic value is
-byte-identical. **Do not** change specificity, do not remove `!important`, do not adjust any
-non-color property. This keeps each commit mechanically reviewable and screenshot-clean.
+For each file: replace every color literal with the semantic token whose Classic value is
+byte-identical, **and every `border-radius` / `box-shadow` / chip-padding literal with its
+Layer 2F token** (again seeded to Classic's current value). **Do not** change specificity, do
+not remove `!important`, do not restructure layout. Each commit stays mechanically reviewable
+and screenshot-clean for Classic — while making the same rules theme-reactive, so Nebula and
+Meridian inherit their own shape and depth the moment they exist in Phases 4–5.
 
 **Exit:** hardcoded literals outside `boardColors.css` and the theme files drop from ~1 833 to
 <150 (permitted residue: pure-decorative gradients, spinner keyframes, `#fff`/`#000` in
@@ -415,25 +437,32 @@ application, template guards, i18n keys, updated tests.
 **Exit:** picker shows a `modern` category; selecting an entry toggles `wk-theme-*` on
 `<html>` and suppresses `board-color-*`. No theme CSS yet, so both render as Classic.
 
-### Phase 4 — Nebula
+### Phase 4 — Nebula (color **and** form)
 
-Implement `theme-nebula.css` + `theme-nebula-decor.css` per `docs/Theme/Theme-Nebula.md`.
+Implement `theme-nebula.css` + `theme-nebula-decor.css` per `docs/Theme/Theme-Nebula.md` —
+Layer 1, 2 **and 2F**: `16px` columns, `14px` cards, pill chips, rim-light separation.
 
-**Exit:** contrast test green; new Nebula baselines; decor within the perf budget.
+**Exit:** contrast test green; `themeForm` dark-separation check green; Nebula baselines;
+decor within the perf budget. Nebula looks like a different application, not a repaint.
 
-### Phase 5 — Meridian
+### Phase 5 — Meridian (color **and** form)
 
-Implement `theme-meridian.css` per `docs/Theme/Theme-Meridian.md`.
+Implement `theme-meridian.css` per `docs/Theme/Theme-Meridian.md` — `10px` columns, `8px`
+cards, soft shadows, comfortable density.
 
-**Exit:** contrast test green; Meridian baselines.
+**Exit:** contrast test green; Meridian baselines at both densities.
 
-### Phase 6 — Form redesign
+### Phase 6 — Structural work
 
-Apply §5.3 component work. **This is the only phase that intentionally changes Classic's
-appearance**, so it needs explicit maintainer sign-off and per-component baseline updates.
+The changes that alter the **layout box model itself** and therefore move Classic:
+`Form-Redesign.md` §3.1 (delete the 1px column divider, add gutters and column radius), §3.2
+(swimlane strip → inset panel), §3.5 (header zoning). **This is the only phase that
+intentionally changes Classic's appearance**, so it needs explicit maintainer sign-off and
+per-component baseline updates. Nebula and Meridian already carry their own shape from
+Phases 4–5; this phase lets Classic benefit too.
 
-**Exit:** one type/space/radius/elevation scale in use; focus rings consistent; baselines
-re-approved.
+**Exit:** one type/space/shape/elevation scale in use; focus rings consistent; baselines
+re-approved; column-gutter width verified at 1280px and mobile.
 
 ### Phase 7 — Cleanup
 
@@ -447,13 +476,14 @@ regenerate `boardColors.css` from tokens, collapsing 4 327 lines toward ~600.
 
 | Test | Type | Guards |
 |---|---|---|
-| `tests/themeTokens.test.cjs` | unit, pure | Every theme defines every token |
+| `tests/themeTokens.test.cjs` | unit, pure | Every theme defines every token, layers 1/2/2F |
 | `tests/themeContrast.test.cjs` | unit, pure | WCAG AA for all declared pairs |
+| `tests/themeForm.test.cjs` *(new)* | unit, pure | Classic's Layer 2F pinned to today's values; dark themes define `--wk-rim-light` and a real `surface-2`→`surface-1` lightness step |
 | `tests/themeCategories.test.cjs` *(update)* | unit, pure | Category union == `ALLOWED_BOARD_COLORS` |
 | `tests/globalThemeColor.test.cjs` *(extend)* | unit | Class application + legacy mutual exclusion |
 | `tests/buttonThemeColors.test.cjs` *(update)* | unit | `--theme-accent` fallbacks still themed |
 | `tests/themeColorPicker.test.cjs` *(extend)* | unit | `modern` category renders, no wheels |
-| `tests/visual/*` | Playwright | 8 screens × 3 themes, no unintended diff |
+| `tests/visual/*` | Playwright | 8 screens × 3 themes × 2 densities, no unintended diff |
 | Negative tests | unit | Unknown theme name rejected; `wk-theme-` never built from unvalidated input; legacy + modern never co-active |
 
 Run per `build.sh` / `docs/Security/Sandboxes/vscode/README.md`; logs land in

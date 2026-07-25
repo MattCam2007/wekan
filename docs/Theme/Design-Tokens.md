@@ -5,9 +5,15 @@ in what order), `docs/Theme/Theme-Nebula.md`, `docs/Theme/Theme-Meridian.md`.
 
 This is the **contract** between component CSS and themes:
 
-- **Component CSS may only reference tokens.** It must never contain a color literal.
-- **A theme may only redefine layer 1 and layer 2** (plus `--wk-radius-*` and
-  `--wk-density`). It must never contain a selector for a component.
+- **Component CSS may only reference tokens.** It must never contain a color literal, and no
+  bare `border-radius` / shadow / padding literal where a token exists.
+- **A theme redefines layer 1, layer 2 and layer 2F (form).** It must never contain a
+  selector for a component.
+
+> **Revision.** An earlier draft restricted themes to color only. That was wrong — it meant
+> a new theme could only recolor a square, flat layout. Shape, elevation, separation and
+> density are now first-class themeable tokens (layer 2F below). See
+> `docs/Theme/Form-Redesign.md` for the reasoning and the per-component geometry.
 
 `tests/themeTokens.test.cjs` enforces that every theme defines every token listed here.
 Adding a token means adding it to *every* theme file in the same commit.
@@ -92,8 +98,57 @@ foreground to use **on** that `-subtle` background.
 ### Elevation colors
 
 `--wk-shadow-ambient`, `--wk-shadow-direct` — the two shadow colors composed by
-`--wk-elev-*`. Dark themes need markedly stronger, cooler values than light themes; this is
-the only way a theme changes elevation.
+`--wk-elev-*`.
+
+---
+
+## Layer 2F — Form (per theme)
+
+Shape, depth and density. **Every theme must define all of these.** This is the layer that
+makes themes structurally different rather than merely recolored — see
+`docs/Theme/Form-Redesign.md`.
+
+### Shape — by role, not by pixel value
+
+| Token | Applies to | Classic | Meridian | Nebula |
+|---|---|---:|---:|---:|
+| `--wk-shape-column` | list column, swimlane panel | `0` | `10px` | `16px` |
+| `--wk-shape-card` | minicard, board tile | `4px` | `8px` | `14px` |
+| `--wk-shape-popup` | pop-over, modal, dropdown | `6px` | `10px` | `16px` |
+| `--wk-shape-control` | button, input, select | `4px` | `6px` | `10px` |
+| `--wk-shape-chip` | label, date, badge, count | `4px` | `6px` | `999px` |
+| `--wk-shape-avatar` | avatars only | `50%` | `50%` | `50%` |
+
+The older `--wk-radius-sm|md|lg|full` remain as the raw scale; the `--wk-shape-*` roles are
+what component CSS references, so a theme changes a component class without hunting pixels.
+
+### Separation — how a surface reads as raised
+
+```
+--wk-sep-strategy      documentation only: shadow | rim | both
+--wk-sep-card          box-shadow for a card at rest
+--wk-sep-card-hover    … hovered
+--wk-sep-card-drag     … dragging
+--wk-sep-column        … list column / swimlane panel
+--wk-sep-popup         … popup / dropdown / modal
+--wk-rim-light         inset top-edge highlight (dark themes; empty on light)
+```
+
+**Light themes use `shadow`. Dark themes must use `rim` plus a surface value step** — a black
+shadow over a dark surface is close to invisible (2.4% of range on the current dark theme,
+1.2% on Nebula, versus 12.9% on light). Encoding this is the fix for "the dark theme looks
+flat"; `tests/themeForm.test.cjs` asserts dark themes define a non-empty `--wk-rim-light` and
+a measurable lightness step between `--wk-surface-2` and `--wk-surface-1`.
+
+### Density
+
+```css
+--wk-density: 1;                          /* comfortable (default) */
+.wk-density-compact { --wk-density: 0.75; }
+```
+
+Consumed as `calc(var(--wk-space-N) * var(--wk-density))` in padding and gutters. Interactive
+targets must stay ≥32px even at `0.75`.
 
 ---
 
@@ -150,7 +205,7 @@ root font-size preset (`--wekan-ui-font-size` scales `body`), so **prefer `rem` 
 of use** where a component should scale with the user's size preset, and `px` only where it
 must not (icon boxes, 1px rules).
 
-### Radius — theme-overridable
+### Radius — raw scale (themes override via the `--wk-shape-*` roles above)
 
 ```css
 --wk-radius-sm: 4px;  --wk-radius-md: 6px;  --wk-radius-lg: 10px;  --wk-radius-full: 999px;
@@ -242,20 +297,22 @@ After Phase 2 (color only — geometry untouched, so the render is byte-identica
 }
 ```
 
-After Phase 6 (geometry snapped to the scales — this is where Classic intentionally moves):
+After Phase 2 with form tokens (geometry tokenized; Classic still pins `--wk-shape-card: 4px`
+and today's shadow, so Classic does not move — but Nebula now renders a `14px` rim-lit card
+and Meridian an `8px` soft-shadowed one from the *same* rule):
 
 ```css
 .minicard {
-  padding: calc(var(--wk-space-2) * var(--wk-density))
-           calc(var(--wk-space-3) * var(--wk-density));
+  padding: calc(var(--wk-space-3) * var(--wk-density));
   background-color: var(--wk-card-bg);
-  box-shadow: var(--wk-card-shadow);
-  border-radius: var(--wk-radius-md);
+  box-shadow: var(--wk-sep-card);
+  border-radius: var(--wk-shape-card);
   color: var(--wk-text-secondary);
-  transition: box-shadow var(--wk-motion-fast) var(--wk-ease-standard);
+  transition: box-shadow var(--wk-motion-fast) var(--wk-ease-standard),
+              transform  var(--wk-motion-fast) var(--wk-ease-standard);
 }
-.minicard:hover { box-shadow: var(--wk-elev-2); }
+.minicard:hover { box-shadow: var(--wk-sep-card-hover); }
 ```
 
-The same file now renders correctly in Classic, Nebula and Meridian with **no theme-specific
-rule anywhere** — which is the entire point.
+The same file now renders correctly in Classic, Nebula and Meridian — with **different shape
+and depth per theme** — and no theme-specific rule anywhere. That is the entire point.

@@ -111,11 +111,58 @@ the alternative for users who find the current chrome heavy.
   --wk-shadow-ambient: rgb(18 22 31 / 0.08);
   --wk-shadow-direct:  rgb(18 22 31 / 0.06);
 
-  /* Character: crisper corners than Nebula */
-  --wk-radius-md: 6px;
-  --wk-radius-lg: 10px;
 }
 ```
+
+## 3F. Layer 2F — Form
+
+Character: *crisp, calm, structured* — clearly separated panels with soft real shadows.
+Meridian is deliberately less rounded than Nebula; it should read as precise, not playful.
+Rationale and per-component geometry in `docs/Theme/Form-Redesign.md`.
+
+```css
+.wk-theme-meridian {
+  /* Shape — moderate; crisper than Nebula, far softer than Classic's squares */
+  --wk-shape-column:  10px;
+  --wk-shape-card:     8px;
+  --wk-shape-popup:   10px;
+  --wk-shape-control:  6px;
+  --wk-shape-chip:     6px;
+  --wk-shape-avatar:  50%;
+
+  /* Separation: real shadows. On light surfaces a black shadow shifts the
+     background by ~12.9% of range, so it is genuinely visible (unlike on dark). */
+  --wk-sep-strategy: shadow;
+  --wk-rim-light: none;
+
+  --wk-sep-card:       0 1px 2px rgb(18 22 31 / 0.06), 0 1px 3px rgb(18 22 31 / 0.08);
+  --wk-sep-card-hover: 0 2px 4px rgb(18 22 31 / 0.08), 0 4px 10px rgb(18 22 31 / 0.10);
+  --wk-sep-card-drag:  0 8px 16px rgb(18 22 31 / 0.12), 0 16px 32px rgb(18 22 31 / 0.16);
+  --wk-sep-column:     0 1px 2px rgb(18 22 31 / 0.05), 0 2px 8px rgb(18 22 31 / 0.06);
+  --wk-sep-popup:      0 4px 12px rgb(18 22 31 / 0.10), 0 16px 32px rgb(18 22 31 / 0.14);
+
+  --wk-density: 1;                  /* comfortable; compact toggle matters most here */
+}
+```
+
+### Structural signatures
+
+- **Columns are cards.** `--wk-surface-2` panels at `10px` radius on the tinted canvas, with a
+  `--wk-space-2` gutter and the `1px solid #ccc` divider deleted. Separation is by value step
+  and a soft shadow — **no vertical rules anywhere**.
+- **List headers lose their second grey bar.** Today `.list-header` paints `#e4e4e4` over the
+  `#dedede` column, creating a visible seam; in Meridian the header is `transparent` on the
+  panel with a balanced `12/12/8` padding rhythm instead of `28px 21px 6px`.
+- **Cards are white on tint.** The value step (`#ffffff` on `#eef0f4`) does most of the
+  separating; the shadow only confirms it. This is why Meridian's shadows can be so light.
+- **Swimlane headers** become inset bars with a 4px leading accent and start-aligned text —
+  the saturated full-bleed bands are gone; the user's swimlane color survives as the accent
+  edge plus an 8%-alpha tint.
+- **Chips** unify at `6px` with `--wk-space-1 --wk-space-2` padding. Due-date states move from
+  raw `#ff4444` / `#ffaa00` fills to `--wk-danger-subtle` / `--wk-warning-subtle` backgrounds
+  with `-text` foregrounds, so an overdue chip is legible rather than alarming.
+- **Board header** is `--wk-surface-1` with a 3px accent underline (see §5), which only works
+  because the header is no longer a saturated flood.
 
 ## 4. Verified contrast
 
@@ -146,8 +193,8 @@ These pairs go into `tests/themeContrast.test.cjs` with their minimums.
   neutral ghost buttons; only the primary action carries the accent.
 - **List columns** — `--wk-surface-2` on `--wk-surface-canvas`, separated by value and
   `--wk-elev-1`, with **no** vertical rules.
-- **Cards** — pure white on the tinted canvas, `--wk-radius-md`, `--wk-elev-1` at rest and
-  `--wk-elev-2` on hover; no border. The value step does the separating.
+- **Cards** — pure white on the tinted canvas, `--wk-shape-card`, `--wk-sep-card` at rest and
+  `--wk-sep-card-hover` on hover; no border. The value step does the separating.
 - **Selection** — `--wk-surface-selected` fill plus a 3px `--wk-accent` inline-start border,
   keeping the existing `boardColors.css` convention.
 - **Focus** — the standard double ring from `Design-Tokens.md`, which on Meridian reads as a
@@ -159,7 +206,7 @@ These pairs go into `tests/themeContrast.test.cjs` with their minimums.
 
 ## 6. Implementation checklist (Phase 5)
 
-- [ ] `client/components/theme/theme-meridian.css` — layers 1–2 exactly as above
+- [ ] `client/components/theme/theme-meridian.css` — layers 1, 2 **and 2F** exactly as above
 - [ ] `'meridian'` in `config/const.js` `ALLOWED_BOARD_COLORS`
 - [ ] `'meridian'` in the `modern` category in `models/lib/themeCategories.js`
 - [ ] i18n key `theme-meridian` in `en.i18n.json` **only** (Transifex supplies translations)

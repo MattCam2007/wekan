@@ -122,11 +122,68 @@ it through the existing board background feature (`docs/Theme/background`).
   --wk-shadow-ambient: rgb(0 0 0 / 0.55);
   --wk-shadow-direct:  rgb(0 0 0 / 0.45);
 
-  /* Character: softer corners than Classic */
-  --wk-radius-md: 8px;
-  --wk-radius-lg: 12px;
 }
 ```
+
+## 3F. Layer 2F — Form
+
+**This is what stops Nebula being "the boxy layout in purple".** Character: *soft, luminous,
+floating* — panels drifting in the void rather than tiles butted together. Rationale and
+per-component geometry in `docs/Theme/Form-Redesign.md`.
+
+```css
+.wk-theme-nebula {
+  /* Shape — the most rounded of the three themes */
+  --wk-shape-column:  16px;
+  --wk-shape-card:    14px;
+  --wk-shape-popup:   16px;
+  --wk-shape-control: 10px;
+  --wk-shape-chip:    999px;        /* full pills, not sharp rectangles */
+  --wk-shape-avatar:  50%;
+
+  /* Separation: RIM LIGHT, not shadow. A black shadow over #141024 shifts the
+     surface by ~1.2% of range — invisible. Depth here comes from a top-edge
+     highlight plus a genuine value step (card #1d1733 sits ABOVE list #141024). */
+  --wk-sep-strategy: rim;
+  --wk-rim-light: inset 0 1px 0 rgb(255 255 255 / 0.07);
+
+  --wk-sep-card:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 2px 10px rgb(0 0 0 / 0.45);
+  --wk-sep-card-hover:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 4px 18px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(255 95 176 / 0.22);          /* faint magenta rim on hover */
+  --wk-sep-card-drag:
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 16px 40px rgb(0 0 0 / 0.65),
+    0 0 24px rgb(255 95 176 / 0.28);           /* the card glows while dragged */
+  --wk-sep-column:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 8px 32px rgb(0 0 0 / 0.40);
+  --wk-sep-popup:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 20px 48px rgb(0 0 0 / 0.70);
+
+  --wk-density: 1;                  /* generous — the void needs room to read */
+}
+```
+
+### Structural signatures
+
+- **List columns float.** `16px` radius, a `--wk-space-3` gutter (wider than Meridian's), and
+  the `1px solid #ccc` divider deleted. The nebula backdrop shows through the gutters, which
+  is what makes the columns read as panels *in* the scene rather than windows onto it.
+- **Optional translucency.** Columns may use `background: rgb(20 16 36 / 0.72)` with
+  `backdrop-filter: blur(12px)` so the nebula glows faintly through. **Perf-gated**: this is
+  a compositing cost on a scrolling board, so it ships behind the same toggle as the backdrop
+  and falls back to the opaque `--wk-surface-2` when disabled or unsupported.
+- **Swimlane headers** become inset rounded bars with a 4px leading accent — never full-bleed
+  strips.
+- **Chips are pills.** Labels, dates and badges all take `--wk-shape-chip: 999px` with
+  `--wk-space-1 --wk-space-2` padding, replacing today's `1px 3px` sharp rectangles.
+- **Glow is hover/drag only.** No resting glow anywhere: a board of 40 glowing cards is noise,
+  and permanent glow would defeat the contrast work in §4.
 
 ## 4. Verified contrast
 
@@ -198,6 +255,8 @@ Small touches that make Nebula feel designed rather than merely inverted:
   while staying ≥3:1 on every surface.
 - **Minicard left border** on selection uses `--wk-accent`, matching the existing
   `border-inline-start: 3px solid` convention in `boardColors.css`.
+- **Drag** uses `rotate(2deg) scale(1.02)` with `--wk-sep-card-drag`, so a dragged card lifts
+  *and* glows — replacing today's `rotate(4deg)` with no depth change at all.
 - **Labels** — the 19 existing label colors are user data and are **not** restyled. Nebula
   only adjusts their *text* color via the existing `models/lib/contrastColor` helper so
   labels stay readable on a dark card.
@@ -205,7 +264,10 @@ Small touches that make Nebula feel designed rather than merely inverted:
 
 ## 7. Implementation checklist (Phase 4)
 
-- [ ] `client/components/theme/theme-nebula.css` — layers 1–2 exactly as above
+- [ ] `client/components/theme/theme-nebula.css` — layers 1, 2 **and 2F** exactly as above
+- [ ] Rim-light separation verified on a real board (the §1.3 flatness bug in
+      `Form-Redesign.md` must not reappear) — `tests/themeForm.test.cjs`
+- [ ] Translucent columns behind the perf toggle, with an opaque fallback
 - [ ] `client/components/theme/theme-nebula-decor.css` — backdrop + star field
 - [ ] `'nebula'` in `config/const.js` `ALLOWED_BOARD_COLORS`
 - [ ] `'nebula'` in the `modern` category in `models/lib/themeCategories.js`
