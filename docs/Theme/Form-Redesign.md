@@ -14,6 +14,29 @@ Shape, depth and rhythm are now **themeable tokens** and ship *with* each theme.
 
 ## 1. Why it looks flat — measured, not opinion
 
+> **Read this first: the "before" quotes below are the base rules, not always what renders.**
+> Every board carries a `board-color-<name>` class (`models/boards.js:426` defaults it to
+> `belize`), and `boardColors.css` holds **784** two-class `.board-color-<name> .foo` selectors
+> that outrank every single-class rule quoted in this document — plus 126 `border-radius`, 101
+> `padding`, 47 `box-shadow` and 62 `font-size` declarations of its own. So `.minicard`'s
+> `border-radius: 4px` below is real CSS that **loses**; users see `7px` from
+> `boardColors.css:228`.
+>
+> This does not change the diagnosis — the UI is square, boxy and flat either way, and in
+> several cases the legacy file makes it *worse* (three different card radii across the 19
+> themes: `7px`, `12px`, `2px`). It changes two things:
+>
+> - **Classic's Layer 2F values are seeded from the rendered cascade**, not from these quotes.
+>   `--wk-shape-card` is `7px`.
+> - **`boardColors.css` is fixed first** (`UI-Redesign-Plan.md` Phase 2a). Applying the geometry
+>   below to `.minicard` while the legacy file still overrides it accomplishes nothing.
+>
+> A second caveat on §1.1–§1.2: those quote the **light** default (`#dedede`, `#ccc`). Under a
+> dark board color the same rules are overridden with dark values — so if you are looking at a
+> dark screenshot, the literals below are not the ones on your screen, though the geometry
+> (no radius, no gutter, 1px divider, full-bleed strip) is identical because
+> `boardColors.css` does not change it.
+
 ### 1.1 The columns are hard rectangles with no gutter
 
 ```css
@@ -80,18 +103,44 @@ different paddings.
 
 ### 1.5 Every corner disagrees
 
-Measured across the tree: **13 distinct `border-radius` values** — `2, 3, 4, 5, 6, 7, 8, 10,
-12, 16px`, `50%`, plus `!important` variants. On a single minicard: card `4px`, finished
-badge `6px`, drag placeholder `17px`, "and N other" chip `6px`.
+Measured across the whole tree: **32 distinct `border-radius` values** — `0, 1, 2, 3, 4, 5, 6,
+7, 8, 10, 12, 14, 15, 16, 17, 18, 20, 100px`, `50%`, `100%`, `inherit`, `unset`, several
+multi-corner forms (`5px 5px 0 0`, `0 0 14px 14px`, `12px 12px 0 0`), plus `!important`
+variants. Alongside them: **54** distinct `font-size` values and **70** distinct `box-shadow`
+values.
 
-### 1.6 Summary of the real defects
+(An earlier draft of this section said 13 / ~20 / 12+. Those came from a sample that excluded
+`boardColors.css` and the `!important` variants. The real figures are 2–5× larger, which is why
+`UI-Redesign-Plan.md` §7 splits the scale collapse into its own phase — 32 → 4 radii is a
+redesign that moves pixels, not a substitution.)
+
+On a single minicard: card `4px` in `minicard.css` but `7px` as rendered, finished badge `6px`,
+drag placeholder `17px`, "and N other" chip `6px`.
+
+### 1.6 There is no typeface
+
+`client/components/main/fonts.css` — imported at `client/styles.js:33` — is **entirely
+commented out**: every `@font-face` for Roboto and Poppins sits inside one `/* … */`. No rule
+in `client/components` sets `font-family` on `body` or `html`. The app renders in the browser
+default face, and has for a long time.
+
+`--wekan-ui-font` (#4759) exists but `uiFont.css` applies it only under the `has-ui-font`
+class — i.e. only for users who explicitly set a font preference. It is an override on top of
+nothing.
+
+This is a large share of the "cheap" impression and it is not a theming problem: it is a
+default the app never had. `UI-Redesign-Plan.md` Phase 1a fixes it in ~15 lines, ahead of
+everything else in this document.
+
+### 1.7 Summary of the real defects
 
 | Symptom | Actual cause |
 |---|---|
 | "Square / boxy" | Columns and swimlane bars have **no radius and no gutter**; 1px lines do all separation |
 | "Flat" | Black shadows are **invisible on dark**; no rim light; no surface value steps |
 | "Cramped" | `1px 3px` chips, `0` column padding, no spacing scale |
-| "Cheap" | 13 radii, 3 chip styles per card, saturated full-bleed strips |
+| "Cheap" | **No typeface at all**; 32 radii, 54 font sizes, 70 shadows; 3 chip styles per card; saturated full-bleed strips |
+| "Nothing I change takes effect" | `boardColors.css` outranks the component rules on every board (see the note at the top of §1) |
 
 ---
 
@@ -112,16 +161,23 @@ the same boxy app in two palettes — while Classic pins today's exact values an
 
 ### 2.1 Shape tokens — by role, not by pixel
 
-The 13 radii collapse into six *roles*. Themes set the values.
+The 32 radii collapse into six *roles*. Themes set the values.
 
-| Token | Applies to | Classic | Meridian | Nebula |
+**Classic's column is the value it renders at**, which for the card is `boardColors.css`'s
+`7px`, not `minicard.css`'s `4px` (see the note at the top of §1):
+
+| Token | Applies to | Classic *(as rendered)* | Meridian | Nebula |
 |---|---|---:|---:|---:|
 | `--wk-shape-column` | list column, swimlane panel | `0` | `10px` | `16px` |
-| `--wk-shape-card` | minicard, board tile | `4px` | `8px` | `14px` |
+| `--wk-shape-card` | minicard, board tile | **`7px`** | `8px` | `14px` |
 | `--wk-shape-popup` | pop-over, modal, dropdown | `6px` | `10px` | `16px` |
 | `--wk-shape-control` | button, input, select | `4px` | `6px` | `10px` |
 | `--wk-shape-chip` | label, date, badge, count | `4px` | `6px` | `999px` (pill) |
 | `--wk-shape-avatar` | avatars only | `50%` | `50%` | `50%` |
+
+Two of the 19 legacy themes disagree with `belize` on the card radius (`12px` and `2px`). Those
+two keep their own `--wk-shape-card` override on `.board-color-<name>` after the Phase 2a
+regeneration, so their appearance is preserved exactly.
 
 ### 2.2 Separation strategy — themeable
 
@@ -167,7 +223,21 @@ option.**
 
 ## 3. Per-component specification
 
-Every "before" below is the current declaration, quoted from the tree.
+Every "before" below is the current declaration, quoted from the tree — subject to the cascade
+note at the top of §1.
+
+**Markup requirements.** Three of these items need template edits, which the first draft of
+`UI-Redesign-Plan.md` had listed as a non-goal while specifying them here. That contradiction
+is resolved: presentational containers and classes are allowed, in Phase 6, with no change to
+Blaze helpers, event handlers, data contexts, `js-*` hook classes, or interactive DOM order.
+
+| Item | Template | Change |
+|---|---|---|
+| §3.4 chips | `client/components/cards/minicard.jade` | A wrapper around the label squares so they can be a `flex-wrap` row |
+| §3.5 header zones | `client/components/boards/boardHeader.jade` | Regroup the button flex items into three zones — **see the warning in §3.5** |
+| §3.6 popups | `client/components/main/popup.tpl.jade` | Explicit header / body / footer containers |
+
+§3.1, §3.2, §3.3 and §3.7 are CSS-only.
 
 ### 3.1 List column — the biggest single win
 
@@ -289,6 +359,29 @@ resizing with the card.
 primary action carries the accent fill.** Height set from the type scale rather than ad-hoc
 padding.
 
+> **The existing grouping is load-bearing — do not treat it as arbitrary.** `boardHeader.jade`
+> already has structure, and both parts of it were bug fixes, documented in comments in the
+> template:
+>
+> - `.board-header-btns-group` wraps **all** the button groups in one flex item, specifically
+>   so that a long board title pushes every button to the second row *together*. As separate
+>   flex items, the left group stayed beside the title and only the right group wrapped,
+>   splitting the controls across both rows.
+> - `.board-header-sidebar-toggle` is a separate flex item placed right after the title in
+>   source order, with `order` moving it last on wide screens. That is what puts the hamburger
+>   top-right in mobile mode instead of wrapping down with everything else.
+>
+> Three-zone grouping must preserve both. `tests/mobileModeConsistency.test.cjs` and
+> `tests/mobileBoardFit.test.cjs` are the guards. **If the zoning cannot be reached without
+> breaking the wrap behaviour, drop the zoning** — a header that regresses to two-row control
+> splitting is worse than a header with two zones instead of three.
+>
+> Note also that "two flat full-width bars" is only half the story: the upper bar is
+> `#header-quick-access` (the All Boards / starred-boards strip from `header.jade:11`), a
+> different template with a different purpose. This section covers the board header only;
+> whether the quick-access strip should merge, collapse or stay is not specified here and is
+> out of scope for Phase 6.
+
 ### 3.6 Popups
 
 **Before:** `border-radius:6px; box-shadow:0 2px 7px rgba(0,0,0,0.3); width:min(380px,55vw);`
@@ -314,39 +407,47 @@ The same component CSS, three genuinely different results:
 | | Classic | Meridian | Nebula |
 |---|---|---|---|
 | Column | square, 1px line | `10px`, gutter, soft shadow | `16px`, wide gutter, floating |
-| Card | `4px`, faint shadow | `8px`, soft shadow, white on tint | `14px`, rim light + value step |
+| Card | `7px`, faint shadow | `8px`, soft shadow, white on tint | `14px`, rim light + value step |
 | Chips | `4px`, `1px 3px` | `6px`, tinted | pill, tinted, glowing on hover |
 | Separation | 1px borders | shadow | rim light + value step |
 | Swimlane | full-bleed strip | inset bar, 4px accent | inset bar, 4px accent, translucent |
 | Character | unchanged | crisp, calm, structured | soft, luminous, floating |
 
-**Classic pins every Layer 2F token to its current value** (`--wk-shape-column: 0`,
-`--wk-shape-card: 4px`, the existing shadow), so it renders byte-identically and the visual
-regression baselines hold. The original theme is preserved *because* form is tokenized, not
-despite it.
+**Classic pins every Layer 2F token to the value it currently renders at**
+(`--wk-shape-column: 0`, `--wk-shape-card: 7px`, the `2px 2px 4px 0 rgb(0 0 0 / 0.15)` shadow —
+all three from `boardColors.css`, not from the component files), so it renders byte-identically
+and the visual regression baselines hold. The original theme is preserved *because* form is
+tokenized, not despite it.
 
 ---
 
 ## 5. Revised phase order
 
-`UI-Redesign-Plan.md` §7 is amended: form is no longer last.
+`UI-Redesign-Plan.md` §7 is the authority; this table summarises where the work in *this*
+document lands. Form is no longer last, and there are now three phases that intentionally move
+Classic rather than one.
 
-| Phase | Was | Now |
+| Phase | Content | Moves Classic? |
 |---|---|---|
-| 0 | Tooling | unchanged |
-| 1 | Tokens + Classic (color) | Tokens + Classic (**color and form**) |
-| 2 | Migrate color literals | Migrate color literals **and geometry to shape/space tokens** |
-| 3 | Theme runtime | unchanged |
-| 4 | Nebula (color) | Nebula (**color + form**) |
-| 5 | Meridian (color) | Meridian (**color + form**) |
-| 6 | Form redesign ← *was here* | **Structural work**: §3.1 gutters, §3.2 swimlane, §3.5 header zones |
-| 7 | Cleanup | unchanged |
+| 0 | Tooling | no |
+| **1a** | **§1.6 — the typeface** | **yes**, deliberately |
+| 1b | Tokens + Classic extraction (color **and** form, seeded from the *rendered* cascade) | no |
+| **2a** | **Regenerate `boardColors.css`** — the prerequisite; without it nothing below is visible | no (pure refactor, 19 themes screenshot-identical) |
+| 2b | Migrate color literals | no |
+| **2c** | Collapse geometry to the shape/space/type/elevation scales (32→4, 54→7, 70→5) | **yes**, expected |
+| 3 | Theme runtime | no |
+| 4 | Nebula (**color + form**) | n/a |
+| 5 | Meridian (**color + form**) | n/a |
+| **6** | **Structural + markup**: §3.1 gutters, §3.2 swimlane, §3.4 label row, §3.5 header zones, §3.6 popup containers | **yes**, needs sign-off |
+| 7 | Cleanup | no |
 
-Phases 1–5 stay visually neutral for Classic (its Layer 2F values equal today's). **Phase 6 is
-still the only phase that intentionally moves Classic**, because deleting the 1px column
-divider and adding gutters changes the default layout — that needs maintainer sign-off and
-fresh baselines. Nebula and Meridian, however, get their full character in Phases 4–5, since
-their Layer 2F values differ from Classic's from the moment they exist.
+Nebula and Meridian get their full character in Phases 4–5, since their Layer 2F values differ
+from Classic's from the moment they exist. Classic changes in 1a (typeface), 2c (scale
+snapping) and 6 (layout) — each isolated so each can be signed off, or reverted, on its own.
+
+Within Phase 6, **ship §3.1 (the column gutter) first**. It is the item most likely to collide
+with the mobile-layout work that landed immediately before this plan, and shipping it alone
+keeps the revert cheap.
 
 ---
 
@@ -359,9 +460,30 @@ their Layer 2F values differ from Classic's from the moment they exist.
   meets 3:1, so depth is never load-bearing for meaning.
 - **Radius must not clip content.** Rounded columns need `overflow: hidden` only on the header
   cap; the scroll container must keep `overflow-y: auto` or card drag breaks.
-- **Gutters cost horizontal space.** Adding `var(--wk-space-2)` per column reduces visible
-  columns on narrow screens; compact density and the existing `--list-width` variable must be
-  checked together at 1280px and at mobile breakpoints.
+- **Gutters cost horizontal space, and land on freshly-stabilised code.** Adding
+  `var(--wk-space-2)` per column reduces visible columns on narrow screens. `--list-width` is
+  not a stylesheet default — it is an **inline style** written per list from `list.jade:3`
+  (`--list-width:{{listWidth}}px`), backed by the `wekan-fixed-list-width` localStorage
+  preference in `listHeader.js`, and consumed with `!important` at `list.css:95-97`. A gutter
+  is therefore *added to* a width the user may have pinned, not absorbed by it.
+
+  The ten commits immediately preceding this plan are all mobile-layout fixes — `clamp()`
+  removal, board-width fit, centred titles, Add List relocation. Six existing tests gate this
+  one change: `listWidthDefaults`, `mobileBoardFit`, `mobileModeFullWidth`,
+  `mobileModeConsistency`, `mobileAddList`, `sidebarWidth`. Verify at 1280px, at the mobile
+  breakpoint, at both densities, **and with a fixed per-list width set**.
+
+- **No viewport units, and no `clamp()`.** `tests/noViewportSpacing.test.cjs` scans every
+  stylesheet and rejects `vh`/`vw` for size or spacing, `clamp()` in any form, and viewport
+  `min-*`. Allowed: full-viewport boxes (`100vh`/`100vw`), `max-*` caps, and shrink-only
+  `min(400px, 52vw)`. Everything specified in this document is fixed-px or
+  `calc(token * density)`, so it complies — but any "make it responsive" instinct during
+  implementation will trip this test, and the test is right.
+
+- **The always-visible list scrollbar stays.** `tests/scrollbarCss.test.cjs` guards #5439:
+  list bodies must keep visible scrollbars on every engine, so overlay/auto-hiding scrollbars
+  are not an option for a cleaner look. Themes may restyle them (`scrollbar-color`,
+  `::-webkit-scrollbar`) — Nebula already does — but must not hide them.
 - **RTL.** Every new declaration uses logical properties (`margin-inline-end`,
   `border-inline-start`) — the tree is RTL-correct today.
 - **`prefers-reduced-motion`** zeroes the new hover/drag transitions via the motion tokens.
@@ -370,10 +492,15 @@ their Layer 2F values differ from Classic's from the moment they exist.
 ## 7. Testing additions
 
 - `tests/themeTokens.test.cjs` — extend to require every **Layer 2F** token in every theme.
-- `tests/themeForm.test.cjs` *(new)* — assert Classic's Layer 2F values equal the current
-  literals (`--wk-shape-card: 4px`, `--wk-shape-column: 0`, the existing shadow), so Phases
-  1–5 cannot silently move the original theme.
-- Visual regression gains a **density** axis: 8 screens × 3 themes × 2 densities.
+- `tests/themeForm.test.cjs` *(new)* — assert Classic's Layer 2F values equal the values it
+  **renders** at (`--wk-shape-card: 7px` from `boardColors.css`, `--wk-shape-column: 0`, the
+  `2px 2px 4px 0 rgb(0 0 0 / 0.15)` card shadow), so Phases 1b–5 cannot silently move the
+  original theme. Asserting against `minicard.css`'s `4px` would pin a value nobody sees.
+- Visual regression gains a **density** axis: 8 screens × 3 themes × 2 densities — plus, as a
+  Phase 2a gate, all **19 legacy board colors**, since that phase rewrites the file that
+  renders them.
 - A dark-separation check: assert dark themes define a non-empty `--wk-rim-light` and a
   measurable lightness step between `--wk-surface-2` and `--wk-surface-1` (the §1.3 bug,
   encoded as a test).
+- Full list of the **existing** tests that gate this work, and what each one forbids:
+  `UI-Redesign-Plan.md` §8.2.

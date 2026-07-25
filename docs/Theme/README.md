@@ -6,8 +6,10 @@ Read in this order:
 
 1. **[UI-Redesign-Plan.md](UI-Redesign-Plan.md)** — the master plan. Measured audit of the
    current CSS, the three-layer token architecture, the theme roster, how it plugs into the
-   existing theme runtime, the form redesign, 8 implementation phases with exit criteria,
-   testing, risks, and the open decisions for the maintainer.
+   existing theme runtime, the form redesign, 11 implementation phases with exit criteria,
+   testing (including the nine **existing** tests that gate the work), risks, and the open
+   decisions for the maintainer. **Start with the Revision 2 table at the top** — it lists the
+   eight things the first draft got wrong and where each is now corrected.
 2. **[Form-Redesign.md](Form-Redesign.md)** — **why the UI reads as square, boxy and flat**,
    measured from the current CSS, and the geometry that fixes it: shape-by-role tokens, the
    dark-theme separation problem (black shadows are ~10× less visible on dark), density, and
@@ -25,12 +27,21 @@ Themes carry **both color and form**. A theme that only recolors would leave the
 layout intact — see the revision note in `Form-Redesign.md` §2.
 
 The original theme is preserved exactly and is the default — see `UI-Redesign-Plan.md` §4.
+"Exactly" means **as rendered**: `boardColors.css` outranks the component stylesheets on every
+board, so Classic's real card radius is `7px`, not the `4px` in `minicard.css`
+(`UI-Redesign-Plan.md` §1.3). That file is a Phase 2a prerequisite, not an optional cleanup.
+
+Three phases intentionally change Classic's appearance and each needs sign-off on its own:
+**1a** (the typeface — the app currently has no `font-family` on `body` at all), **2c**
+(collapsing 32 radii / 54 font sizes / 70 shadows onto the scales), and **6** (gutters,
+swimlanes, header zoning, and the plan's only markup edits).
 
 ## Existing theme docs
 
 - **[Theme.md](Theme.md)** — the shipped "Select Color" theme categories (`flat` / `clear` /
   `dark` / `special`), custom colors, and the picker UX. The redesign adds a fifth
-  category, `modern`, on top of this.
+  category, `token`, on top of this. (Not `modern`: `modern` and `moderndark` are already
+  *theme* names inside `special` and `dark` — see `UI-Redesign-Plan.md` §4.1.)
 - **[Custom-CSS-themes.md](Custom-CSS-themes.md)** — writing your own CSS theme.
 - **[Dark-Mode.md](Dark-Mode.md)** — the current dark-mode notes.
 - **[Converting-Meteor-Stylus-to-CSS.md](Converting-Meteor-Stylus-to-CSS.md)** — history of

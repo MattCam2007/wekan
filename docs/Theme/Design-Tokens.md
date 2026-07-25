@@ -10,10 +10,17 @@ This is the **contract** between component CSS and themes:
 - **A theme redefines layer 1, layer 2 and layer 2F (form).** It must never contain a
   selector for a component.
 
-> **Revision.** An earlier draft restricted themes to color only. That was wrong — it meant
+> **Revision 1.** An earlier draft restricted themes to color only. That was wrong — it meant
 > a new theme could only recolor a square, flat layout. Shape, elevation, separation and
 > density are now first-class themeable tokens (layer 2F below). See
 > `docs/Theme/Form-Redesign.md` for the reasoning and the per-component geometry.
+>
+> **Revision 2.** Four corrections from the review in `UI-Redesign-Plan.md`:
+> a **typeface** section (the app has no `font-family` on `body` at all);
+> `color-mix()` **banned inside token definitions**, where its documented fallback silently
+> does not work; theme blocks written `:root.wk-theme-<name>` so precedence does not depend on
+> import order; and Classic's values seeded from the **rendered cascade** (`boardColors.css`
+> outranks component CSS on every board) rather than from whichever file declares them.
 
 `tests/themeTokens.test.cjs` enforces that every theme defines every token listed here.
 Adding a token means adding it to *every* theme file in the same commit.
@@ -110,14 +117,19 @@ makes themes structurally different rather than merely recolored — see
 
 ### Shape — by role, not by pixel value
 
-| Token | Applies to | Classic | Meridian | Nebula |
+| Token | Applies to | Classic *(as rendered)* | Meridian | Nebula |
 |---|---|---:|---:|---:|
 | `--wk-shape-column` | list column, swimlane panel | `0` | `10px` | `16px` |
-| `--wk-shape-card` | minicard, board tile | `4px` | `8px` | `14px` |
+| `--wk-shape-card` | minicard, board tile | **`7px`** | `8px` | `14px` |
 | `--wk-shape-popup` | pop-over, modal, dropdown | `6px` | `10px` | `16px` |
 | `--wk-shape-control` | button, input, select | `4px` | `6px` | `10px` |
 | `--wk-shape-chip` | label, date, badge, count | `4px` | `6px` | `999px` |
 | `--wk-shape-avatar` | avatars only | `50%` | `50%` | `50%` |
+
+**Classic's values are the ones it renders at, which is not always what a component file says.**
+`minicard.css` declares `border-radius: 4px`, but every board carries a `board-color-*` class
+and `boardColors.css:228` overrides it to `7px` at higher specificity. Seed Classic from the
+cascade, not from a single file — `UI-Redesign-Plan.md` §1.3.
 
 The older `--wk-radius-sm|md|lg|full` remain as the raw scale; the `--wk-shape-*` roles are
 what component CSS references, so a theme changes a component class without hunting pixels.
@@ -188,7 +200,29 @@ Defined once in `_tokens.css`. Themes may override **only** `--wk-radius-*` and
 ```
 
 Replaces the current `3/5/6/8/10/12/14/21/23px` mix. Where a legacy value has no exact match,
-Phase 2 keeps the literal (spacing is not a color) and Phase 6 snaps it to the scale.
+Phase 2b keeps the literal (spacing is not a color) and Phase 2c snaps it to the scale.
+
+### Typeface
+
+The app has **no** `font-family` on `body` today, and `client/components/main/fonts.css` is
+100% commented out (`UI-Redesign-Plan.md` §1.4). These tokens are that missing default:
+
+```css
+--wk-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+                "Noto Sans", Arial, sans-serif;
+--wk-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                "Liberation Mono", monospace;
+```
+
+- `body { font-family: var(--wk-font-sans); }` in `_tokens.css`. A system stack — no bundled
+  asset, no network fetch, no swap-induced layout shift.
+- `--wk-font-mono` replaces the ad-hoc `monospace`, `lucida console, monospace` and `Courier`
+  in `attachments.css`, `layouts.css`, `originalPositionsView.css` and `globalSearch.css`.
+- **`--wekan-ui-font` (#4759) still wins.** `uiFont.css` applies it with `!important` under the
+  `has-ui-font` class, so a user's explicit font preference continues to override this default.
+- A theme **may** override `--wk-font-sans`. With `--wk-radius-*` / `--wk-shape-*` and
+  `--wk-density`, that is the complete list of non-color things a theme may touch. Neither
+  Nebula nor Meridian overrides it.
 
 ### Type
 
@@ -200,10 +234,16 @@ Phase 2 keeps the literal (spacing is not a color) and Phase 6 snaps it to the s
 --wk-weight-normal: 400;   --wk-weight-medium: 500;    --wk-weight-bold: 700;
 ```
 
-These are the ~20 current sizes collapsed to 7. They must remain compatible with the #4759
-root font-size preset (`--wekan-ui-font-size` scales `body`), so **prefer `rem` at the point
-of use** where a component should scale with the user's size preset, and `px` only where it
-must not (icon boxes, 1px rules).
+These are the **54** current sizes collapsed to 7 (an earlier draft said ~20; that count
+excluded `boardColors.css` and the `!important` variants). Most existing values have no exact
+match and must be *snapped* to the nearest step, which moves pixels — that is why the collapse
+is its own phase rather than part of the mechanical color migration.
+
+They must remain compatible with the #4759 root font-size preset (`--wekan-ui-font-size` scales
+`body`), so **prefer `rem` at the point of use** where a component should scale with the user's
+size preset, and `px` only where it must not (icon boxes, 1px rules). Note that
+`tests/noViewportSpacing.test.cjs` rejects `clamp()` outright, so a "fluid" type scale is not
+available and is not wanted.
 
 ### Radius — raw scale (themes override via the `--wk-shape-*` roles above)
 
@@ -260,14 +300,43 @@ Collect the existing ad-hoc values into one ladder so stacking bugs stop being g
 1. **No color literal in component CSS.** Permitted residue: `transparent`, `currentColor`,
    `#fff`/`#000` *inside* a shadow or gradient definition that a token already colors.
 2. **No component selector in a theme file.** A theme is a flat list of custom properties
-   inside one `:root` or `.wk-theme-<name>` block.
-3. **Every `color-mix()` needs a static fallback declaration immediately above it.**
-4. **Keep logical properties.** `inset-inline-start`, `margin-inline-end`, `padding-inline` —
+   inside one `:root` or `:root.wk-theme-<name>` block.
+3. **Write the theme selector as `:root.wk-theme-<name>`, never a bare `.wk-theme-<name>`.**
+   `:root` and a single class are both specificity (0,1,0), so a bare class merely *ties* with
+   the Classic block and the winner falls to source order — i.e. to the order of imports in
+   `client/styles.js`. `:root.wk-theme-nebula` is (0,2,0) and wins regardless.
+   `tests/themeSelector.test.cjs` enforces this.
+4. **`color-mix()` is banned inside custom-property definitions.** It is allowed in component
+   longhands, with a static fallback declaration immediately above:
+
+   ```css
+   .btn:hover { background: #2471a3; }                                   /* fallback */
+   .btn:hover { background: color-mix(in oklab, var(--wk-accent) 88%, black); }
+   ```
+
+   The fallback works there because an unsupported `color-mix()` makes the *declaration* a
+   parse error, so it is dropped and the previous one wins. **Custom-property values are not
+   parsed at declaration time** — they are stored as raw tokens and substituted at `var()`
+   time. So `--wk-accent-hover: color-mix(…)` parses fine everywhere, and then
+   `background: var(--wk-accent-hover)` becomes invalid-at-computed-value-time on a
+   non-supporting browser → `unset` → transparent, with the "fallback" discarded. Theme files
+   use **literal derivation** (write the computed value with a comment giving its origin). If a
+   derived ramp is genuinely needed, wrap the theme block in
+   `@supports (color: color-mix(in oklab, red 50%, blue))` and provide a literal-valued block
+   before it. `tests/themeTokens.test.cjs` fails on `color-mix(` inside any `--wk-*` definition
+   that is not inside such an `@supports`.
+5. **Keep logical properties.** `inset-inline-start`, `margin-inline-end`, `padding-inline` —
    the codebase is RTL-correct today and tokens must not regress that.
-5. **Adding a token = adding it to every theme file in the same commit.**
+6. **No viewport units, no `clamp()`.** `tests/noViewportSpacing.test.cjs` scans every
+   stylesheet. Allowed: `100vh`/`100vw` for a full-viewport box, `max-*` caps, and shrink-only
+   `min(400px, 52vw)`. Sizes are fixed px or `calc(token * var(--wk-density))`.
+7. **Adding a token = adding it to every theme file in the same commit.**
    `tests/themeTokens.test.cjs` fails otherwise.
-6. **New foreground/background pairings must be added to
+8. **New foreground/background pairings must be added to
    `tests/themeContrast.test.cjs`** with their required minimum.
+9. **Seed Classic from the rendered cascade**, not from whichever component file declares the
+   property. `boardColors.css` outranks component rules on every board (§Shape above,
+   `UI-Redesign-Plan.md` §1.3).
 
 ---
 
@@ -285,7 +354,7 @@ Before (`minicard.css`, current):
 }
 ```
 
-After Phase 2 (color only — geometry untouched, so the render is byte-identical in Classic):
+After Phase 2b (color only — geometry untouched, so the render is byte-identical in Classic):
 
 ```css
 .minicard {
@@ -297,9 +366,10 @@ After Phase 2 (color only — geometry untouched, so the render is byte-identica
 }
 ```
 
-After Phase 2 with form tokens (geometry tokenized; Classic still pins `--wk-shape-card: 4px`
-and today's shadow, so Classic does not move — but Nebula now renders a `14px` rim-lit card
-and Meridian an `8px` soft-shadowed one from the *same* rule):
+After Phase 2c with form tokens (geometry tokenized; Classic pins `--wk-shape-card: 7px` — the
+value `boardColors.css` actually renders, not `minicard.css`'s shadowed `4px` — so Classic does
+not move, while Nebula renders a `14px` rim-lit card and Meridian an `8px` soft-shadowed one
+from the *same* rule):
 
 ```css
 .minicard {

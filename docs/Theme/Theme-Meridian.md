@@ -1,6 +1,6 @@
 # Theme: Meridian (light)
 
-Status: **Plan — not yet implemented** · Category: `modern` · Class: `.wk-theme-meridian`
+Status: **Plan — not yet implemented** · Category: `token` · Class: `:root.wk-theme-meridian`
 Related: `docs/Theme/UI-Redesign-Plan.md`, `docs/Theme/Design-Tokens.md`.
 
 Meridian is the third theme and the **reference implementation of the redesigned form**. Where
@@ -11,8 +11,8 @@ at a board for eight hours.
 ## 1. Design intent
 
 The original theme is a saturated flat-blue chrome over near-white surfaces, with cramped
-padding, ~20 font sizes and 13 corner radii. Meridian keeps the same information density
-target but fixes the rhythm:
+padding, 54 font sizes, 32 corner radii, 70 shadow variants and no typeface of its own.
+Meridian keeps the same information density target but fixes the rhythm:
 
 - **Cool neutrals, one confident accent.** Color carries *meaning* only — status, selection,
   focus. Chrome is neutral, so user data (labels, card colors, avatars) is what stands out.
@@ -29,7 +29,7 @@ the alternative for users who find the current chrome heavy.
 ## 2. Layer 1 — Primitives
 
 ```css
-.wk-theme-meridian {
+:root.wk-theme-meridian {
   /* Cool neutral ramp */
   --wk-palette-neutral-0:    #ffffff;
   --wk-palette-neutral-50:   #f7f8fa;   /* app background        */
@@ -61,7 +61,7 @@ the alternative for users who find the current chrome heavy.
 ## 3. Layer 2 — Semantic mapping
 
 ```css
-.wk-theme-meridian {
+:root.wk-theme-meridian {
   /* Surfaces */
   --wk-surface-app:      var(--wk-palette-neutral-50);
   --wk-surface-canvas:   var(--wk-palette-neutral-100);
@@ -121,7 +121,7 @@ Meridian is deliberately less rounded than Nebula; it should read as precise, no
 Rationale and per-component geometry in `docs/Theme/Form-Redesign.md`.
 
 ```css
-.wk-theme-meridian {
+:root.wk-theme-meridian {
   /* Shape — moderate; crisper than Nebula, far softer than Classic's squares */
   --wk-shape-column:  10px;
   --wk-shape-card:     8px;
@@ -206,9 +206,17 @@ These pairs go into `tests/themeContrast.test.cjs` with their minimums.
 
 ## 6. Implementation checklist (Phase 5)
 
-- [ ] `client/components/theme/theme-meridian.css` — layers 1, 2 **and 2F** exactly as above
+**Prerequisite: Phase 2a.** Until `boardColors.css` is regenerated from tokens, its 784
+two-class selectors outrank every component rule Meridian's tokens feed, so the theme would
+render as a partial repaint over Classic geometry. See `UI-Redesign-Plan.md` §1.3.
+
+- [ ] `client/components/theme/theme-meridian.css` — layers 1, 2 **and 2F** exactly as above,
+      in a single `:root.wk-theme-meridian` block (not a bare class — see `Design-Tokens.md`
+      authoring rule 3)
+- [ ] Every value a **literal**; no `color-mix()` in any `--wk-*` definition
+      (`Design-Tokens.md` authoring rule 4)
 - [ ] `'meridian'` in `config/const.js` `ALLOWED_BOARD_COLORS`
-- [ ] `'meridian'` in the `modern` category in `models/lib/themeCategories.js`
+- [ ] `'meridian'` in the `token` category in `models/lib/themeCategories.js`
 - [ ] i18n key `theme-meridian` in `en.i18n.json` **only** (Transifex supplies translations)
 - [ ] Contrast pairs added to `tests/themeContrast.test.cjs`
 - [ ] Token completeness passes `tests/themeTokens.test.cjs`

@@ -1,6 +1,6 @@
 # Theme: Nebula (dark)
 
-Status: **Plan — not yet implemented** · Category: `modern` · Class: `.wk-theme-nebula`
+Status: **Plan — not yet implemented** · Category: `token` · Class: `:root.wk-theme-nebula`
 Related: `docs/Theme/UI-Redesign-Plan.md`, `docs/Theme/Design-Tokens.md`.
 
 Nebula is derived from a deep-space nebula photograph: a near-black void, a hot
@@ -34,7 +34,7 @@ it through the existing board background feature (`docs/Theme/background`).
 ## 2. Layer 1 — Primitives
 
 ```css
-.wk-theme-nebula {
+:root.wk-theme-nebula {
   /* Void — neutral ramp, blue-violet tinted rather than pure grey */
   --wk-palette-neutral-1000: #05040c;   /* deepest void          */
   --wk-palette-neutral-900:  #0b0918;   /* board canvas          */
@@ -72,7 +72,7 @@ it through the existing board background feature (`docs/Theme/background`).
 ## 3. Layer 2 — Semantic mapping
 
 ```css
-.wk-theme-nebula {
+:root.wk-theme-nebula {
   /* Surfaces */
   --wk-surface-app:       var(--wk-palette-neutral-1000);
   --wk-surface-canvas:    var(--wk-palette-neutral-900);
@@ -132,7 +132,7 @@ floating* — panels drifting in the void rather than tiles butted together. Rat
 per-component geometry in `docs/Theme/Form-Redesign.md`.
 
 ```css
-.wk-theme-nebula {
+:root.wk-theme-nebula {
   /* Shape — the most rounded of the three themes */
   --wk-shape-column:  16px;
   --wk-shape-card:    14px;
@@ -264,14 +264,23 @@ Small touches that make Nebula feel designed rather than merely inverted:
 
 ## 7. Implementation checklist (Phase 4)
 
-- [ ] `client/components/theme/theme-nebula.css` — layers 1, 2 **and 2F** exactly as above
+**Prerequisite: Phase 2a.** Until `boardColors.css` is regenerated from tokens, its 784
+two-class selectors outrank every component rule Nebula's tokens feed, so the theme would
+render as a partial repaint over Classic geometry. See `UI-Redesign-Plan.md` §1.3.
+
+- [ ] `client/components/theme/theme-nebula.css` — layers 1, 2 **and 2F** exactly as above,
+      in a single `:root.wk-theme-nebula` block (not a bare class — see `Design-Tokens.md`
+      authoring rule 3)
+- [ ] Every value a **literal**; no `color-mix()` in any `--wk-*` definition
+      (`Design-Tokens.md` authoring rule 4)
 - [ ] Rim-light separation verified on a real board (the §1.3 flatness bug in
       `Form-Redesign.md` must not reappear) — `tests/themeForm.test.cjs`
 - [ ] Translucent columns behind the perf toggle, with an opaque fallback
 - [ ] `client/components/theme/theme-nebula-decor.css` — backdrop + star field
 - [ ] `'nebula'` in `config/const.js` `ALLOWED_BOARD_COLORS`
-- [ ] `'nebula'` in the `modern` category in `models/lib/themeCategories.js`
-- [ ] i18n keys `theme-nebula`, `theme-nebula-backdrop` in `en.i18n.json` **only**
+- [ ] `'nebula'` in the `token` category in `models/lib/themeCategories.js`
+- [ ] i18n keys `theme-nebula`, `theme-nebula-backdrop` and `theme-category-token` in
+      `en.i18n.json` **only**
 - [ ] Contrast pairs added to `tests/themeContrast.test.cjs`
 - [ ] Token completeness passes `tests/themeTokens.test.cjs`
 - [ ] Playwright baselines for the 8 reference screens
