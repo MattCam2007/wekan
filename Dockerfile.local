@@ -1,0 +1,205 @@
+# Dockerfile.local - Build WeKan from source locally
+# Multi-stage build: builder -> runtime
+# Usage: docker compose -f docker-compose.local.yml up -d --build
+#
+# NOTE: COPY is a Dockerfile-level instruction and must NEVER be placed inside
+# a `RUN <<EOR ... EOR` heredoc — it is not a shell command. Each COPY below
+# is a standalone instruction between RUN blocks, which is also what makes
+# `COPY --from=builder` create a real build dependency on the builder stage.
+
+# =============================================================================
+# STAGE 1: BUILDER - Build Meteor bundle and install server dependencies
+# =============================================================================
+FROM ubuntu:26.04 AS builder
+
+LABEL maintainer="wekan"
+LABEL org.opencontainers.image.source="https://github.com/wekan/wekan"
+
+ARG TARGETARCH
+ARG TARGETVARIANT
+ARG DEBIAN_FRONTEND=noninteractive
+
+ENV BUILD_DEPS="apt-utils gnupg wget bzip2 g++ curl libarchive-tools build-essential git ca-certificates python3 unzip coreutils"
+ENV METEOR_RELEASE=METEOR@3.5-rc.2
+ENV NODE_VERSION=v24.18.0
+ENV NPM_VERSION=11.12.1
+# Builder runs as root (no USER set) - Meteor refuses to run any command as
+# root unless this is set (or --allow-superuser is passed to every command).
+ENV METEOR_ALLOW_SUPERUSER=true
+
+# Install OS deps, Node.js and Meteor. No COPY here - source is copied below
+# as standalone Dockerfile instructions.
+RUN <<EOR
+set -eo pipefail
+
+apt-get update --assume-yes
+apt-get upgrade --assume-yes
+apt-get install --assume-yes --no-install-recommends ${BUILD_DEPS}
+
+# Multi-arch mapping for Node.js (same logic as main Dockerfile)
+case "${TARGETARCH}" in
+    "amd64")   NODE_ARCH="x64"     ;;
+    "arm64")   NODE_ARCH="arm64"   ;;
+    "ppc64le") NODE_ARCH="ppc64le" ;;
+    "s390x")   NODE_ARCH="s390x"   ;;
+    "riscv64") NODE_ARCH="riscv64" NODE_BASE="unofficial" ;;
+    *) echo "Unsupported architecture: ${TARGETARCH}"; exit 1 ;;
+esac
+
+NODE_BASE="${NODE_BASE:-official}"
+if [ "${NODE_BASE}" = "unofficial" ]; then
+    NODE_DIST="https://unofficial-builds.nodejs.org/download/release/${NODE_VERSION}"
+else
+    NODE_DIST="https://nodejs.org/dist/${NODE_VERSION}"
+fi
+
+cd /tmp
+wget "${NODE_DIST}/node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz"
+wget "${NODE_DIST}/SHASUMS256.txt"
+grep " node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz\$" SHASUMS256.txt | sha256sum -c -
+tar xzf "node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz" -C /usr/local --strip-components=1 --no-same-owner
+rm -f "node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz" SHASUMS256.txt
+ln -s "/usr/local/bin/node" "/usr/local/bin/nodejs"
+
+# npm
+npm install -g npm@${NPM_VERSION}
+
+# Meteor: the installer downloads the tool to $HOME/.meteor (here /root/.meteor,
+# since builder runs as root) and creates a symlink at /usr/local/bin/meteor,
+# which is already on PATH - no PATH export needed in later RUN blocks.
+curl https://install.meteor.com/ | sh
+
+mkdir -p /app
+EOR
+
+WORKDIR /app
+
+# Copy the full source tree BEFORE `meteor npm install`: package.json's
+# "postinstall" script (node scripts/patch-yargs-dirname.cjs) needs the repo's
+# scripts/ directory to exist, so npm install cannot run against a partial
+# copy (package.json alone) - this sacrifices some Docker layer caching for
+# correctness.
+COPY . .
+
+# Installs npm dependencies AND fetches the Meteor release/packages pinned in
+# .meteor/release and .meteor/packages (matches releases/rebuild-release.sh /
+# build.sh's build_wekan: `meteor update --npm || true; meteor npm install`).
+RUN <<EOR
+set -eo pipefail
+meteor update --npm 2>/dev/null || true
+meteor npm install
+EOR
+
+# Build the Meteor bundle (client + server) and install the server's own npm
+# dependencies (compiles native modules such as bcrypt for TARGETARCH).
+# Matches build.sh's build_wekan / releases/rebuild-release.sh exactly - no
+# "--server-only" flag exists on `meteor build`.
+RUN <<EOR
+set -eo pipefail
+meteor build /app/.build --directory
+cd /app/.build/bundle/programs/server
+npm install --omit=dev
+EOR
+
+# =============================================================================
+# STAGE 2: RUNTIME - Minimal production image
+# =============================================================================
+FROM ubuntu:26.04 AS runtime
+
+LABEL maintainer="wekan"
+LABEL org.opencontainers.image.source="https://github.com/wekan/wekan"
+
+ARG TARGETARCH
+ARG TARGETVARIANT
+ARG DEBIAN_FRONTEND=noninteractive
+
+ENV RUNTIME_DEPS="ca-certificates curl wget libarchive-tools coreutils"
+ENV PORT=8080
+ENV WRITABLE_PATH=/data
+
+# Install runtime OS deps, Node.js, FerretDB and MongoDB Database Tools.
+# No COPY here - the bundle/entrypoint files are copied below as standalone
+# Dockerfile instructions (this is also what makes `COPY --from=builder`
+# below create a real dependency edge on the builder stage).
+RUN <<EOR
+set -eo pipefail
+
+case "${TARGETARCH}" in
+    "amd64")   FERRETDB_ARCH="amd64"   MONGO_TOOLS_ARCH="x86_64" ;;
+    "arm64")   FERRETDB_ARCH="arm64"   MONGO_TOOLS_ARCH="aarch64" ;;
+    "ppc64le") FERRETDB_ARCH="ppc64le" MONGO_TOOLS_ARCH="ppc64le" ;;
+    "s390x")   FERRETDB_ARCH="s390x"   MONGO_TOOLS_ARCH="s390x" ;;
+    "riscv64") FERRETDB_ARCH="riscv64" MONGO_TOOLS_ARCH="riscv64" ;;
+    *) echo "Unsupported architecture: ${TARGETARCH}"; exit 1 ;;
+esac
+
+apt-get update --assume-yes
+apt-get upgrade --assume-yes
+apt-get install --assume-yes --no-install-recommends ${RUNTIME_DEPS}
+
+useradd --user-group --system --create-home --home-dir /home/wekan wekan
+
+# Node.js runtime (same as builder)
+if [ "${TARGETARCH}" = "riscv64" ]; then
+    NODE_DIST="https://unofficial-builds.nodejs.org/download/release/v24.18.0"
+else
+    NODE_DIST="https://nodejs.org/dist/v24.18.0"
+fi
+
+case "${TARGETARCH}" in
+    "amd64")   NODE_ARCH="x64"     ;;
+    "arm64")   NODE_ARCH="arm64"   ;;
+    "ppc64le") NODE_ARCH="ppc64le" ;;
+    "s390x")   NODE_ARCH="s390x"   ;;
+    "riscv64") NODE_ARCH="riscv64" ;;
+esac
+
+cd /tmp
+wget "${NODE_DIST}/node-v24.18.0-linux-${NODE_ARCH}.tar.gz"
+wget "${NODE_DIST}/SHASUMS256.txt"
+grep " node-v24.18.0-linux-${NODE_ARCH}.tar.gz\$" SHASUMS256.txt | sha256sum -c -
+tar xzf "node-v24.18.0-linux-${NODE_ARCH}.tar.gz" -C /usr/local --strip-components=1 --no-same-owner
+rm -f "node-v24.18.0-linux-${NODE_ARCH}.tar.gz" SHASUMS256.txt
+ln -s "/usr/local/bin/node" "/usr/local/bin/nodejs"
+
+# FerretDB v1 binary (for architectures without MongoDB Community, and used
+# by wekan-entrypoint.sh's FerretDB-backed mode). Release assets are bare
+# binaries named "ferretdb-linux-<arch>", not archives.
+FERRETDB_VERSION="1.24.0"
+wget "https://github.com/FerretDB/FerretDB/releases/download/v${FERRETDB_VERSION}/ferretdb-linux-${FERRETDB_ARCH}" -O /usr/local/bin/ferretdb
+chmod +x /usr/local/bin/ferretdb
+
+# MongoDB Database Tools (bsondump, mongodump, mongorestore, ...) for backup/restore.
+MONGO_TOOLS_VERSION="100.10.0"
+wget "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-${MONGO_TOOLS_ARCH}-${MONGO_TOOLS_VERSION}.tgz"
+tar xzf "mongodb-database-tools-ubuntu2204-${MONGO_TOOLS_ARCH}-${MONGO_TOOLS_VERSION}.tgz"
+mv "mongodb-database-tools-ubuntu2204-${MONGO_TOOLS_ARCH}-${MONGO_TOOLS_VERSION}/bin/"* /usr/local/bin/
+rm -rf "mongodb-database-tools-ubuntu2204-${MONGO_TOOLS_ARCH}-${MONGO_TOOLS_VERSION}" "mongodb-database-tools-ubuntu2204-${MONGO_TOOLS_ARCH}-${MONGO_TOOLS_VERSION}.tgz"
+
+mkdir -p /data
+EOR
+
+# Real Dockerfile-level COPY instructions (this is the fix): these create an
+# actual dependency on the `builder` stage, unlike text inside a RUN heredoc.
+COPY --from=builder /app/.build/bundle /build
+COPY --chmod=755 releases/ferretdb/wekan-entrypoint.sh /build/wekan-entrypoint.sh
+COPY --chmod=644 releases/ferretdb/recovery-bridge.mjs /build/recovery-bridge.mjs
+
+# Final ownership + cleanup.
+RUN <<EOR
+set -eo pipefail
+chown wekan:wekan --recursive /data /build /home/wekan
+
+apt-get remove --purge --assume-yes ${RUNTIME_DEPS} 2>/dev/null || true
+apt-get autoremove --assume-yes
+apt-get clean --assume-yes
+rm -rf /tmp/* /var/lib/apt/lists/*
+EOR
+
+USER wekan
+ENV PORT=8080
+EXPOSE $PORT
+STOPSIGNAL SIGKILL
+WORKDIR /build
+
+CMD ["bash", "/build/wekan-entrypoint.sh"]

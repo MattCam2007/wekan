@@ -1,0 +1,130 @@
+# docker-compose.local.yml - WeKan with MongoDB 7, built locally from source
+#
+# This compose file builds WeKan from local source instead of pulling pre-built images.
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d --build
+#
+# Based on docker-compose-mongodb-v7.yml but with local build configuration.
+
+services:
+
+  # =========================================================================
+  # DATABASE: MongoDB 7 with Replica Set
+  # =========================================================================
+  wekandb:
+    image: mongo:7
+    container_name: wekan-db
+    restart: always
+    command: >
+      sh -c '
+        mongod --storageEngine wiredTiger --wiredTigerCacheSizeGB 32 --timeZoneInfo /usr/share/zoneinfo --setParameter logicalSessionRefreshMillis=900000 --setParameter localLogicalSessionTimeoutMinutes=45 --oplogSize 20480 --replSet rs0 --bind_ip_all --quiet &
+        until mongosh --host 127.0.0.1 --quiet --eval "
+          try {
+            const status = rs.status();
+            quit(status.ok === 1 ? 0 : 1);
+          } catch (e) {
+            if (
+              e.codeName === "NotYetInitialized" ||
+              e.message.includes("no replset config has been received") ||
+              e.message.includes("not yet initialized")
+            ) {
+              rs.initiate({
+                _id: "rs0",
+                members: [{ _id: 0, host: "wekandb:27017" }]
+              });
+              quit(1);
+            }
+            quit(1);
+          }
+        " >/dev/null 2>&1; do
+          sleep 2
+        done
+        wait
+      '
+    networks:
+      - wekan-tier
+    expose:
+      - 27017
+    healthcheck:
+      test: ["CMD", "mongosh", "--host", "127.0.0.1", "--port", "27017", "--quiet", "--eval", "try { quit(rs.status().ok === 1 && db.hello().isWritablePrimary ? 0 : 1) } catch (e) { quit(1) }"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - wekan-db:/data/db
+      - wekan-db-dump:/dump
+
+  # =========================================================================
+  # WEKAN APP: Built from local source
+  # =========================================================================
+  wekan:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+      # No VERSION build-arg: this builds whatever source is in the local
+      # working tree (via `meteor build`), not a downloaded release zip.
+    container_name: wekan-app
+    restart: always
+    networks:
+      - wekan-tier
+    ports:
+      - 80:8080
+    environment:
+      # =====================================================================
+      # CORE SETTINGS
+      # =====================================================================
+      - METEOR_REACTIVITY_ORDER=changeStreams,oplog,polling
+      - DDP_TRANSPORT=uws
+      - WRITABLE_PATH=/data
+      - MONGO_URL=mongodb://wekandb:27017/wekan
+      - MONGO_OPLOG_URL=mongodb://wekandb:27017/local?replicaSet=rs0
+      - ROOT_URL=http://localhost
+      - MAIL_URL=smtp://<mail_url>:25/?ignoreTLS=true&tls={rejectUnauthorized:false}
+      - MAIL_FROM=Wekan Notifications <noreply.wekan@mydomain.com>
+      - WITH_API=true
+      - RICHER_CARD_COMMENT_EDITOR=false
+      - CARDS_LOADING=all
+      - CARD_OPENED_WEBHOOK_ENABLED=false
+      - BIGEVENTS_PATTERN=NONE
+      - BROWSER_POLICY_ENABLED=true
+      # =====================================================================
+      # OPTIONAL: UNCOMMENT AND CONFIGURE AS NEEDED
+      # =====================================================================
+      # - METEOR_REACTIVITY_ORDER=polling
+      # - S3='{"s3":{"key": "xxx", "secret": "xxx", "bucket": "xxx", "region": "xxx"}}'
+      # - MAIL_URL=smtps://user:pass@mailserver.example.com:465/
+      # - ROOT_URL=https://your-domain.com
+      # - CORS=*
+      # - CORS_ALLOW_HEADERS=Authorization,Content-Type
+      # - OAUTH2_ENABLED=true
+      # - LDAP_ENABLE=true
+      # - DEBUG=true
+    depends_on:
+      wekandb:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - wekan-files:/data:rw
+    # secrets:
+    #   - ldap_auth_password
+    #   - oauth2_secret
+    #   - mail_service_password
+    #   - mongo_password
+    #   - s3_secret
+
+# =========================================================================
+# NETWORKS
+# =========================================================================
+networks:
+  wekan-tier:
+    driver: bridge
+
+# =========================================================================
+# VOLUMES
+# =========================================================================
+volumes:
+  wekan-db:
+  wekan-db-dump:
+  wekan-files:
